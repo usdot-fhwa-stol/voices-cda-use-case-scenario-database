@@ -1,0 +1,192 @@
+# Abstract scenario defintion for Demo 1
+
+# 1. Define that abstract road network that represents the roads, junction, and routes followed in the demonstration (i.e. representative of TFHRC map)
+#      Note: There is no support for traffic signal controller objects in OpenScenario2.0, so traffic 
+#            signal interaction is not accounted for in this scenario definition
+modifier map.three_junction_network:
+
+    #define roads r1 = innovation drive (west of west intersection) (~200 m)
+    #             r2 = innovation drive (east of west intersection) (~180 m)
+    #             r3 = CIA loop (~270 m)
+    r1: road with:
+        keep(min_lanes == 2)
+        keep(length == 200m)
+    r2: road with:
+        keep(min_lanes == 2)
+        keep(length == 200m)    
+    r3: road with:
+        keep(min_lanes == 2)
+        keep(length == 250m)  
+
+    #Define Junctions: j1 = west intersection, j2 = east intersection, j3 = colonial farm/innovation drive
+    j1, j2, j3: junction
+
+    #Define Routes through junctions
+    # path through west intersection (eastbound) (live/constructive vehicles)
+    f1: roads_follow_in_junction(junction: j1, number_of_in_roads: 4,
+        in_road: r1, out_road: r2, direction: right)
+    # path through east intersection (live vehicle)
+    f2: roads_follow_in_junction(junction: j2, number_of_in_roads: 4, 
+        in_road: r2, out_road: r3)
+    # path through west intersection (westbound) (live vehicle)
+    f3: roads_follow_in_junction(junction: j1, number_of_in_roads: 4, 
+        in_road: r3, out_road: r1)
+
+    # path through west intersection (westbound) (virtual vehicle )
+    f4: roads_follow_in_junction(junction: j1, number_of_in_roads: 4, 
+        in_road: r2, out_road: r1)   
+    # U-Turn maneuver (virtual vehicle)
+    f5: roads_follow_in_junction(junction: j3, number_of_in_roads: 4, 
+        in_road: r1, out_road: r1)
+
+    # define route for live and constructive vehicles  (full route length 850m)
+    rt1: route = create_route([r1, f1.junction_route, r2, f2.junction_route, r3, f3.junction_route, r1])
+
+    # define route for for virtual vehicle (full route length 800m)
+    rt2: route = create_route([r2, f4.junction_route, r1, f5.junction_route, r1, f1.junction_route, r2])
+
+
+# 2. Define Scenario 
+scenario voices_sit1_platooning_abstract:
+    #use abstract map defined above
+    n : map.three_junction_network()
+
+    # define 4 vehicles used in demonstration
+    live, constructive_1, constructive_2, virtual : vehicle with:
+        keep(category == car)
+
+    do serial:
+
+        start_driving: parallel 
+            live.drive() with: 
+                speed(0mph,  at: start)
+                speed([29..31]mph, at: end)   
+                along(route: n.rt1, start_offset: 10m, end_offset: 760m)  #end @ 90 meters into r1
+            constructive_1.drive() with: 
+                speed(0mph,  at: start)
+                speed([29..31]mph, at: end)   
+                along(route: n.rt1, start_offset: 5m, end_offset: 775m)  
+                lane(same_as: live, at: start)
+            constructive_2.drive() with: 
+                speed(0mph,  at: start)
+                speed([29..31]mph, at: end)   
+                along(route: n.rt1, start_offset: 0m, end_offset: 790m)
+                lane(same_as: live, at: start)
+            virtual.drive() with: 
+                speed(0mph,  at: start)
+                speed([20..25]mph, at: end)   
+                along(route: n.rt2, start_offset: 0m, end_offset: 740m) #drive 60 m 
+
+        form_platoon: parallel
+            live.drive() with: 
+                speed([29..31]mph, at: all)
+                along(route: n.rt1, start_offset: 90m, end_offset: 650m) #end at west intersection 
+            constructive_1.drive() with:
+                lane(same_as: live, at: start)
+                position([2..4]m, behind: live, at: end)
+            constructive_2.drive() with:
+                lane(same_as: live, at: start)
+                position([2..4]m, behind: constructive_1, at: end)
+            virtual.drive() with: 
+                speed([20..25]mph, at: all)   
+                along(route: n.rt2, start_offset: 60m, end_offset: 660m) #drive 80 m
+
+        execute_platoon: parallel
+            live.drive() with: 
+                speed([29..31]mph, at: all)
+                along(route: n.rt1, start_offset: 200m, end_offset: 580m) # travel 70 meters while executing platooning
+            constructive_1.drive() with: 
+                lane(same_as: live, at: start)
+                position([2..4]m, behind: live, at: all)
+            constructive_2.drive() with: 
+                lane(same_as: live, at: start)
+                position([2..4]m, behind: live, at: all) 
+            virtual.drive() with: 
+                speed([20..25]mph, at: all)   
+                along(route: n.rt2, start_offset: 140m, end_offset: 560m) #drive 100 m
+        
+        workzone_slowdown: parallel
+            live.drive() with: 
+                speed([19..21]mph, at: start)
+                along(route: n.rt1, start_offset: 270m, end_offset: 490m) # execute workzone slowdown before reaching east intersection 
+            constructive_1.drive() with: 
+                lane(same_as: live, at: start)
+                position([4..6]m, behind: live, at: end)
+            constructive_2.drive() with: 
+                lane(same_as: live, at: start)
+                position([4..6]m, behind: live, at: end) 
+            virtual.drive() with: 
+                speed([20..25]mph, at: all)   
+                along(route: n.rt2, start_offset: 240m, end_offset: 480m) #drive 80 m
+        
+        workzone_ending: parallel
+            live.drive() with: 
+                speed([29..31]mph, at: start)
+                speed(0mph, at: end)
+                along(route: n.rt1, start_offset: 360m, end_offset: 450m) # end at east intersection 
+            constructive_1.drive() with: 
+                lane(same_as: live, at: start)
+                position([4..6]m, behind: live, at: end)
+            constructive_2.drive() with: 
+                lane(same_as: live, at: start)
+                position([4..6]m, behind: live, at: end) 
+            virtual.drive() with: 
+                speed([20..25]mph, at: all)   
+                along(route: n.rt2, start_offset: 320m, end_offset: 400m) #drive 80 m
+
+        signal_int_setup_1: parallel
+            live.drive() with: 
+                speed(0mph,      at: start)
+                speed([29..31]mph, at: end)
+                along(route: n.rt1, start_offset: 400m, end_offset: 325m )  #end halfway through CIA loop 
+            constructive_1.remain_stationary()
+            constructive_2.remain_stationary()
+            virtual.drive() with: 
+                speed([20..25]mph, at: all)
+                along(route: n.rt2, start_offset: 400m, end_offset: 320) #drive 80 m (and do u-turn)
+
+        signal_int_setup_2: parallel
+            live.drive() with: 
+                speed([29..31]mph, at: start)
+                speed(0mph, at: end)
+                along(route: n.rt1, start_offset: 525m, end_offset: 200m ) #end at west intersection
+            constructive_1.remain_stationary()
+            constructive_2.remain_stationary() 
+            virtual.drive() with: 
+                speed([20..25]mph, at: start)
+                speed(0mph, at: end)   
+                along(route: n.rt2, start_offset: 480m, end_offset: 200m) # end at west intersection
+
+        signal_int: parallel
+            live.drive() with: 
+                speed(0mph,      at: start)
+                speed([29..31]mph, at: end)
+                along(route:  n.rt1, start_offset: 650m, end_offset: 100m) #end halfway up road 1
+            constructive_1.remain_stationary()
+            constructive_2.remain_stationary() 
+            virtual.remain_stationary()
+
+        demo_end: parallel
+            live.drive() with: 
+                speed([29..31]mph, at: start)
+                speed(0mph, at: end)
+                along(route: n.rt1, start_offset: 750m, end_offset: 0m) # end at end of road 1
+            constructive_1.remain_stationary()
+            constructive_2.remain_stationary() 
+            virtual.drive() with: 
+                speed(0mph,  at: start)
+                speed([20..25]mph, at: end)   
+                along(route: n.rt2, start_offset: 600m, end_offset: 100m) # end halfway up road 2
+
+
+
+
+
+
+
+
+
+
+
+
+
